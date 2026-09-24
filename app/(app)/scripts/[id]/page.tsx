@@ -4,11 +4,14 @@ import { useEffect, useState, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 
+type VisualNotes = Record<string, string>;
+
 type ScriptData = {
   id: string;
   title: string;
   platform: string | null;
   script_type: string | null;
+  niche: string | null;
   status: string;
   hook: string | null;
   introduction: string | null;
@@ -16,6 +19,7 @@ type ScriptData = {
   transitions: string | null;
   payoff: string | null;
   cta: string | null;
+  visual_notes: VisualNotes | null;
 };
 
 const STATUSES = ["draft", "in_progress", "ready", "scheduled", "published"];
@@ -39,6 +43,15 @@ export default function ScriptEditorPage() {
   const [loading, setLoading] = useState(true);
   const [saveState, setSaveState] = useState<"idle" | "saving" | "saved">("idle");
   const [titleDraft, setTitleDraft] = useState("");
+
+  const [showAiForm, setShowAiForm] = useState(false);
+  const [aiLength, setAiLength] = useState("medium");
+  const [aiGenre, setAiGenre] = useState("");
+  const [aiSetting, setAiSetting] = useState("");
+  const [aiTimePeriod, setAiTimePeriod] = useState("");
+  const [aiTone, setAiTone] = useState("");
+  const [generating, setGenerating] = useState(false);
+  const [aiError, setAiError] = useState("");
 
   const loadScript = useCallback(async () => {
     setLoading(true);
@@ -83,6 +96,68 @@ export default function ScriptEditorPage() {
   async function handleDelete() {
     await supabase.from("scripts").delete().eq("id", id);
     router.push("/scripts");
+  }
+
+  async function handleGenerateScript(e: React.FormEvent) {
+    e.preventDefault();
+    if (!script) return;
+    setAiError("");
+    setGenerating(true);
+
+    try {
+      const res = await fetch("/api/generate-script", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: script.title,
+          niche: script.niche,
+          platform: script.platform,
+          scriptType: script.script_type,
+          tone: aiTone,
+          length: aiLength,
+          genre: aiGenre,
+          setting: aiSetting,
+          timePeriod: aiTimePeriod,
+        }),
+      });
+
+      const data = await res.json();
+
+      if (!data.success) {
+        setAiError(data.error || "Generation failed.");
+        return;
+      }
+
+      const g = data.script;
+      const visualNotes: VisualNotes = {
+        hook: g.hook?.visual ?? "",
+        introduction: g.introduction?.visual ?? "",
+        main_content: g.main_content?.visual ?? "",
+        transitions: g.transitions?.visual ?? "",
+        payoff: g.payoff?.visual ?? "",
+        cta: g.cta?.visual ?? "",
+      };
+
+      const updates = {
+        hook: g.hook?.text ?? "",
+        introduction: g.introduction?.text ?? "",
+        main_content: g.main_content?.text ?? "",
+        transitions: g.transitions?.text ?? "",
+        payoff: g.payoff?.text ?? "",
+        cta: g.cta?.text ?? "",
+        visual_notes: visualNotes,
+        updated_at: new Date().toISOString(),
+      };
+
+      await supabase.from("scripts").update(updates).eq("id", id);
+
+      setScript({ ...script, ...updates });
+      setShowAiForm(false);
+    } catch {
+      setAiError("Something went wrong. Please try again.");
+    } finally {
+      setGenerating(false);
+    }
   }
 
   if (loading) {
@@ -139,19 +214,92 @@ export default function ScriptEditorPage() {
         </button>
       </div>
 
-      <div className="mt-8 space-y-6">
+      {/* AI GENERATOR */}
+      <div className="mt-6 border border-gray-800 rounded-2xl p-6 bg-gray-950">
+        <div className="flex items-center justify-between">
+          <h2 className="font-semibold flex items-center gap-2">
+            ✨ Generate full script with AI
+          </h2>
+          <button
+            onClick={() => setShowAiForm((s) => !s)}
+            className="text-xs bg-white text-black rounded-full px-4 py-2 hover:bg-gray-200"
+          >
+            {showAiForm ? "Cancel" : "Generate"}
+          </button>
+        </div>
+
+        {showAiForm && (
+          <form onSubmit={handleGenerateScript} className="mt-4 space-y-3">
+            <p className="text-xs text-gray-500">
+              Uses this script&apos;s title ({script.title || "untitled"}), platform, and type.
+              This will overwrite existing content in all sections.
+            </p>
+
+            <select
+              value={aiLength}
+              onChange={(e) => setAiLength(e.target.value)}
+              className="w-full bg-gray-900 border border-gray-800 rounded-lg px-4 py-3 text-sm focus:outline-none focus:border-gray-600"
+            >
+              <option value="short">Short (30-60 sec, e.g. Shorts/TikTok)</option>
+              <option value="medium">Medium (2-4 min)</option>
+              <option value="long">Long-form (8-15 min)</option>
+            </select>
+
+            <div className="grid sm:grid-cols-3 gap-3">
+              <input
+                placeholder="Genre (e.g. drama, comedy, horror)"
+                value={aiGenre}
+                onChange={(e) => setAiGenre(e.target.value)}
+                className="bg-gray-900 border border-gray-800 rounded-lg px-4 py-3 text-sm focus:outline-none focus:border-gray-600"
+              />
+              <input
+                placeholder="Setting/Region (e.g. Lagos, small town)"
+                value={aiSetting}
+                onChange={(e) => setAiSetting(e.target.value)}
+                className="bg-gray-900 border border-gray-800 rounded-lg px-4 py-3 text-sm focus:outline-none focus:border-gray-600"
+              />
+              <input
+                placeholder="Time period (e.g. present day, 1990s)"
+                value={aiTimePeriod}
+                onChange={(e) => setAiTimePeriod(e.target.value)}
+                className="bg-gray-900 border border-gray-800 rounded-lg px-4 py-3 text-sm focus:outline-none focus:border-gray-600"
+              />
+            </div>
+
+            <input
+              placeholder="Tone (e.g. bold and direct, warm and casual)"
+              value={aiTone}
+              onChange={(e) => setAiTone(e.target.value)}
+              className="w-full bg-gray-900 border border-gray-800 rounded-lg px-4 py-3 text-sm focus:outline-none focus:border-gray-600"
+            />
+
+            {aiError && <p className="text-red-500 text-sm">{aiError}</p>}
+
+            <button
+              type="submit"
+              disabled={generating}
+              className="bg-white text-black px-5 py-3 rounded-full font-medium hover:bg-gray-200 disabled:opacity-50"
+            >
+              {generating ? "Writing your script..." : "Generate script"}
+            </button>
+          </form>
+        )}
+      </div>
+
+      <div className="mt-10 space-y-10">
         {SECTIONS.map((section) => (
           <div key={section.key}>
-            <div className="flex items-center justify-between">
-              <label className="text-sm font-semibold">{section.label}</label>
+            <div className="flex items-center justify-between mb-3">
+              <label className="text-base font-semibold">{section.label}</label>
               <div className="flex gap-2">
                 {["Rewrite", "Shorten", "Expand", "Tone"].map((action) => (
                   <button
                     key={action}
                     type="button"
                     disabled
-                    title="AI actions arrive in Stage 14"
-                    className="text-xs text-gray-600 border border-gray-900 rounded-full px-3 py-1 cursor-not-allowed"
+                    title="Coming in a future update"
+                    className="text-xs text-gray-500 border rounded-full px-3 py-1 cursor-not-allowed"
+                    style={{ borderColor: "#2a2a3a" }}
                   >
                     {action}
                   </button>
@@ -159,12 +307,22 @@ export default function ScriptEditorPage() {
               </div>
             </div>
             <textarea
-              defaultValue={script[section.key] ?? ""}
-              onBlur={(e) => saveField(section.key, e.target.value)}
+              key={script[section.key] as string}
+              defaultValue={(script[section.key] as string) ?? ""}
+              onBlur={(e) => saveField(section.key as string, e.target.value)}
               placeholder={section.placeholder}
               rows={5}
-              className="mt-2 w-full bg-gray-900 border border-gray-800 rounded-lg px-4 py-3 text-sm focus:outline-none focus:border-gray-600"
+              className="w-full bg-gray-900 border border-gray-800 rounded-lg px-4 py-4 leading-relaxed focus:outline-none focus:border-gray-600"
+              style={{ fontSize: "16px", lineHeight: "1.7" }}
             />
+            {script.visual_notes?.[section.key as string] && (
+              <div className="mt-3 flex gap-2 items-start bg-indigo-950/40 border border-indigo-900/50 rounded-lg px-4 py-3">
+                <span className="text-xs text-indigo-300 shrink-0 font-medium">🎥 Visual:</span>
+                <p className="text-xs text-indigo-200/80 leading-relaxed">
+                  {script.visual_notes[section.key as string]}
+                </p>
+              </div>
+            )}
           </div>
         ))}
       </div>

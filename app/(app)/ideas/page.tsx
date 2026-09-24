@@ -28,6 +28,7 @@ export default function IdeasPage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
+  // Manual form fields
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [topic, setTopic] = useState("");
@@ -36,6 +37,17 @@ export default function IdeasPage() {
   const [contentType, setContentType] = useState("");
   const [targetAudience, setTargetAudience] = useState("");
   const [duration, setDuration] = useState("");
+
+  // AI generator fields
+  const [aiTopic, setAiTopic] = useState("");
+  const [aiNiche, setAiNiche] = useState("");
+  const [aiPlatform, setAiPlatform] = useState("");
+  const [aiContentType, setAiContentType] = useState("");
+  const [aiAudience, setAiAudience] = useState("");
+  const [generating, setGenerating] = useState(false);
+  const [generatedIdeas, setGeneratedIdeas] = useState<string[]>([]);
+  const [aiError, setAiError] = useState("");
+  const [savingIndex, setSavingIndex] = useState<number | null>(null);
 
   async function loadIdeas() {
     setLoading(true);
@@ -106,6 +118,67 @@ export default function IdeasPage() {
     loadIdeas();
   }
 
+  async function handleGenerate(e: React.FormEvent) {
+    e.preventDefault();
+    setAiError("");
+    setGenerating(true);
+    setGeneratedIdeas([]);
+
+    try {
+      const res = await fetch("/api/generate-ideas", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          topic: aiTopic,
+          niche: aiNiche,
+          platform: aiPlatform,
+          contentType: aiContentType,
+          targetAudience: aiAudience,
+        }),
+      });
+
+      const data = await res.json();
+
+      if (!data.success) {
+        setAiError(data.error || "Generation failed.");
+        return;
+      }
+
+      setGeneratedIdeas(data.ideas);
+    } catch {
+      setAiError("Something went wrong. Please try again.");
+    } finally {
+      setGenerating(false);
+    }
+  }
+
+  async function handleSaveGenerated(ideaText: string, index: number) {
+    setSavingIndex(index);
+
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) {
+      setSavingIndex(null);
+      return;
+    }
+
+    await supabase.from("content_ideas").insert({
+      user_id: user.id,
+      title: ideaText,
+      topic: aiTopic || null,
+      niche: aiNiche || null,
+      platform: aiPlatform || null,
+      content_type: aiContentType || null,
+      target_audience: aiAudience || null,
+    });
+
+    setSavingIndex(null);
+    setGeneratedIdeas((prev) => prev.filter((_, i) => i !== index));
+    loadIdeas();
+  }
+
   return (
     <div>
       <div className="flex items-center justify-between">
@@ -121,6 +194,88 @@ export default function IdeasPage() {
         </button>
       </div>
 
+      {/* AI GENERATOR */}
+      <div className="mt-6 border border-gray-800 rounded-2xl p-6 bg-gray-950">
+        <h2 className="font-semibold flex items-center gap-2">
+          ✨ Generate ideas with AI
+        </h2>
+        <form onSubmit={handleGenerate} className="mt-4 space-y-4">
+          <div className="grid sm:grid-cols-2 gap-4">
+            <input
+              placeholder="Topic (e.g. morning routines)"
+              value={aiTopic}
+              onChange={(e) => setAiTopic(e.target.value)}
+              className="bg-gray-900 border border-gray-800 rounded-lg px-4 py-3 text-sm focus:outline-none focus:border-gray-600"
+            />
+            <input
+              placeholder="Niche (e.g. fitness)"
+              value={aiNiche}
+              onChange={(e) => setAiNiche(e.target.value)}
+              className="bg-gray-900 border border-gray-800 rounded-lg px-4 py-3 text-sm focus:outline-none focus:border-gray-600"
+            />
+          </div>
+          <div className="grid sm:grid-cols-2 gap-4">
+            <select
+              value={aiPlatform}
+              onChange={(e) => setAiPlatform(e.target.value)}
+              className="bg-gray-900 border border-gray-800 rounded-lg px-4 py-3 text-sm focus:outline-none focus:border-gray-600"
+            >
+              <option value="">Platform...</option>
+              {PLATFORMS.map((p) => (
+                <option key={p} value={p}>{p}</option>
+              ))}
+            </select>
+            <select
+              value={aiContentType}
+              onChange={(e) => setAiContentType(e.target.value)}
+              className="bg-gray-900 border border-gray-800 rounded-lg px-4 py-3 text-sm focus:outline-none focus:border-gray-600"
+            >
+              <option value="">Content type...</option>
+              {CONTENT_TYPES.map((c) => (
+                <option key={c} value={c}>{c}</option>
+              ))}
+            </select>
+          </div>
+          <input
+            placeholder="Target audience (e.g. busy professionals)"
+            value={aiAudience}
+            onChange={(e) => setAiAudience(e.target.value)}
+            className="w-full bg-gray-900 border border-gray-800 rounded-lg px-4 py-3 text-sm focus:outline-none focus:border-gray-600"
+          />
+
+          {aiError && <p className="text-red-500 text-sm">{aiError}</p>}
+
+          <button
+            type="submit"
+            disabled={generating}
+            className="bg-white text-black px-5 py-3 rounded-full font-medium hover:bg-gray-200 disabled:opacity-50"
+          >
+            {generating ? "Generating..." : "Generate 5 ideas"}
+          </button>
+        </form>
+
+        {generatedIdeas.length > 0 && (
+          <div className="mt-6 space-y-3">
+            {generatedIdeas.map((idea, index) => (
+              <div
+                key={index}
+                className="flex items-start justify-between gap-3 border border-gray-800 rounded-lg p-4"
+              >
+                <p className="text-sm">{idea}</p>
+                <button
+                  onClick={() => handleSaveGenerated(idea, index)}
+                  disabled={savingIndex === index}
+                  className="shrink-0 text-xs bg-white text-black rounded-full px-3 py-2 hover:bg-gray-200 disabled:opacity-50"
+                >
+                  {savingIndex === index ? "Saving..." : "Save"}
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* MANUAL FORM */}
       {showForm && (
         <form
           onSubmit={handleCreate}
@@ -231,7 +386,7 @@ export default function IdeasPage() {
           <p className="text-gray-500 text-sm">Loading ideas...</p>
         ) : ideas.length === 0 ? (
           <p className="text-gray-500 text-sm">
-            No ideas yet. Click &quot;+ New Idea&quot; to create your first one.
+            No ideas yet. Generate some with AI above, or click &quot;+ New Idea&quot;.
           </p>
         ) : (
           <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
