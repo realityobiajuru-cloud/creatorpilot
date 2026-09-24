@@ -35,6 +35,7 @@ export default async function AppLayout({
             Ideas
           </a>
           <a href="/scripts" className="text-gray-400 hover:text-white whitespace-nowrap shrink-0">Script Studio</a>
+          <a href="/scenes" className="text-gray-400 hover:text-white whitespace-nowrap shrink-0">Scenes</a>
           <a href="/calendar" className="text-gray-400 hover:text-white whitespace-nowrap shrink-0">Calendar</a>
           <a href="/library" className="text-gray-400 hover:text-white whitespace-nowrap shrink-0">Library</a>
           <a href="/hooks" className="text-gray-400 hover:text-white whitespace-nowrap shrink-0">
