@@ -35,10 +35,21 @@ export default function HooksPage() {
   const [error, setError] = useState("");
   const [filterStyle, setFilterStyle] = useState("");
 
+  // Manual form fields
   const [content, setContent] = useState("");
   const [style, setStyle] = useState("");
   const [platform, setPlatform] = useState("");
   const [notes, setNotes] = useState("");
+
+  // AI generator fields
+  const [aiTopic, setAiTopic] = useState("");
+  const [aiNiche, setAiNiche] = useState("");
+  const [aiPlatform, setAiPlatform] = useState("");
+  const [aiStyle, setAiStyle] = useState("");
+  const [generating, setGenerating] = useState(false);
+  const [generatedHooks, setGeneratedHooks] = useState<string[]>([]);
+  const [aiError, setAiError] = useState("");
+  const [savingIndex, setSavingIndex] = useState<number | null>(null);
 
   async function loadHooks() {
     setLoading(true);
@@ -101,6 +112,63 @@ export default function HooksPage() {
     loadHooks();
   }
 
+  async function handleGenerate(e: React.FormEvent) {
+    e.preventDefault();
+    setAiError("");
+    setGenerating(true);
+    setGeneratedHooks([]);
+
+    try {
+      const res = await fetch("/api/generate-hooks", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          topic: aiTopic,
+          niche: aiNiche,
+          platform: aiPlatform,
+          style: aiStyle,
+        }),
+      });
+
+      const data = await res.json();
+
+      if (!data.success) {
+        setAiError(data.error || "Generation failed.");
+        return;
+      }
+
+      setGeneratedHooks(data.hooks);
+    } catch {
+      setAiError("Something went wrong. Please try again.");
+    } finally {
+      setGenerating(false);
+    }
+  }
+
+  async function handleSaveGenerated(hookText: string, index: number) {
+    setSavingIndex(index);
+
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) {
+      setSavingIndex(null);
+      return;
+    }
+
+    await supabase.from("hooks").insert({
+      user_id: user.id,
+      content: hookText,
+      style: aiStyle || null,
+      platform: aiPlatform || null,
+    });
+
+    setSavingIndex(null);
+    setGeneratedHooks((prev) => prev.filter((_, i) => i !== index));
+    loadHooks();
+  }
+
   const filteredHooks = filterStyle
     ? hooks.filter((h) => h.style === filterStyle)
     : hooks;
@@ -120,6 +188,102 @@ export default function HooksPage() {
         </button>
       </div>
 
+      {/* AI GENERATOR */}
+      <div className="mt-6 border border-gray-800 rounded-2xl p-6 bg-gray-950">
+        <h2 className="font-semibold flex items-center gap-2">
+          ✨ Generate hooks with AI
+        </h2>
+        <form onSubmit={handleGenerate} className="mt-4 space-y-4">
+          <div className="grid sm:grid-cols-2 gap-4">
+            <input
+              placeholder="Topic (e.g. morning routines)"
+              value={aiTopic}
+              onChange={(e) => setAiTopic(e.target.value)}
+              className="bg-gray-900 border border-gray-800 rounded-lg px-4 py-3 text-sm focus:outline-none focus:border-gray-600"
+            />
+            <input
+              placeholder="Niche (e.g. fitness)"
+              value={aiNiche}
+              onChange={(e) => setAiNiche(e.target.value)}
+              className="bg-gray-900 border border-gray-800 rounded-lg px-4 py-3 text-sm focus:outline-none focus:border-gray-600"
+            />
+          </div>
+
+          <select
+            value={aiPlatform}
+            onChange={(e) => setAiPlatform(e.target.value)}
+            className="w-full bg-gray-900 border border-gray-800 rounded-lg px-4 py-3 text-sm focus:outline-none focus:border-gray-600"
+          >
+            <option value="">Platform...</option>
+            {PLATFORMS.map((p) => (
+              <option key={p} value={p}>{p}</option>
+            ))}
+          </select>
+
+          <div>
+            <label className="text-sm text-gray-400">Style (optional)</label>
+            <div className="mt-2 flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => setAiStyle("")}
+                className={`rounded-full px-4 py-2 text-sm border ${
+                  aiStyle === ""
+                    ? "bg-white text-black border-white"
+                    : "border-gray-800 text-gray-300"
+                }`}
+              >
+                Surprise me
+              </button>
+              {STYLES.map((s) => (
+                <button
+                  type="button"
+                  key={s}
+                  onClick={() => setAiStyle(s)}
+                  className={`rounded-full px-4 py-2 text-sm border ${
+                    aiStyle === s
+                      ? "bg-white text-black border-white"
+                      : "border-gray-800 text-gray-300"
+                  }`}
+                >
+                  {s}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {aiError && <p className="text-red-500 text-sm">{aiError}</p>}
+
+          <button
+            type="submit"
+            disabled={generating}
+            className="bg-white text-black px-5 py-3 rounded-full font-medium hover:bg-gray-200 disabled:opacity-50"
+          >
+            {generating ? "Generating..." : "Generate 5 hooks"}
+          </button>
+        </form>
+
+        {generatedHooks.length > 0 && (
+          <div className="mt-6 space-y-3">
+            {generatedHooks.map((hook, index) => (
+              <div
+                key={index}
+                className="flex items-start justify-between gap-3 border border-gray-800 rounded-lg p-4"
+              >
+                <p className="text-sm">{hook}</p>
+                <button
+                  onClick={() => handleSaveGenerated(hook, index)}
+                  disabled={savingIndex === index}
+                  className="shrink-0 text-xs bg-white text-black rounded-full px-3 py-2 hover:bg-gray-200 disabled:opacity-50"
+                >
+                  {savingIndex === index ? "Saving..." : "Save"}
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* MANUAL FORM */}
       {showForm && (
         <form
           onSubmit={handleCreate}
@@ -227,7 +391,7 @@ export default function HooksPage() {
         ) : filteredHooks.length === 0 ? (
           <p className="text-gray-500 text-sm">
             {hooks.length === 0
-              ? 'No hooks yet. Click "+ New Hook" to save your first one.'
+              ? "No hooks yet. Generate some with AI above, or save your own."
               : "No hooks match this filter."}
           </p>
         ) : (
