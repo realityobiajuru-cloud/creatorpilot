@@ -256,6 +256,7 @@ export default function SceneEditorPage() {
               <label className="text-sm text-gray-400">Number of scenes</label>
               <input
                 type="number"
+                onFocus={(e) => e.target.select()}
                 min={2}
                 max={15}
                 value={sceneCount}

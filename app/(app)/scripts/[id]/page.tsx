@@ -52,6 +52,7 @@ export default function ScriptEditorPage() {
   const [aiTone, setAiTone] = useState("");
   const [generating, setGenerating] = useState(false);
   const [aiError, setAiError] = useState("");
+  const [creatingScenes, setCreatingScenes] = useState(false);
 
   const loadScript = useCallback(async () => {
     setLoading(true);
@@ -98,6 +99,50 @@ export default function ScriptEditorPage() {
     router.push("/scripts");
   }
 
+
+  async function handleCreateScenes() {
+    if (!script) return;
+    setCreatingScenes(true);
+
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) {
+      setCreatingScenes(false);
+      return;
+    }
+
+    const scriptContent = [
+      script.hook,
+      script.introduction,
+      script.main_content,
+      script.transitions,
+      script.payoff,
+      script.cta,
+    ]
+      .filter(Boolean)
+      .join("\n\n");
+
+    const { data, error } = await supabase
+      .from("scenes_projects")
+      .insert({
+        user_id: user.id,
+        title: script.title,
+        script_id: script.id,
+        concept: scriptContent,
+        genre: null,
+        setting: null,
+      })
+      .select("id")
+      .single();
+
+    setCreatingScenes(false);
+
+    if (error || !data) return;
+
+    router.push(`/scenes/${data.id}`);
+  }
   async function handleGenerateScript(e: React.FormEvent) {
     e.preventDefault();
     if (!script) return;
@@ -206,6 +251,13 @@ export default function ScriptEditorPage() {
             {script.script_type}
           </span>
         )}
+        <button
+          onClick={handleCreateScenes}
+          disabled={creatingScenes}
+          className="text-xs bg-purple-900/40 text-purple-200 border border-purple-800 rounded-full px-4 py-2 hover:bg-purple-900/60 disabled:opacity-50"
+        >
+          {creatingScenes ? "Creating scenes..." : "🎬 Generate Scenes"}
+        </button>
         <button
           onClick={handleDelete}
           className="text-xs text-gray-500 hover:text-red-500 ml-auto"
